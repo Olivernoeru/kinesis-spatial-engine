@@ -1,6 +1,5 @@
 // File: src/engine/SpatialObject.js
 
-// --- 1. DATA GEOMETRI MESIN ---
 const t = (1.0 + Math.sqrt(5.0)) / 2.0;
 const icoNodes = [
   [-1, t, 0], [1, t, 0], [-1, -t, 0], [1, -t, 0],
@@ -13,130 +12,98 @@ const icoEdges = [
   [4,11],[5,9],[6,8],[6,7],[6,10],[7,8],[8,9],[10,11]
 ];
 
-// --- 2. PALET ULTIMATE CRIMSON + ADDITIVE BLENDING ---
+// PALET CYBER-MONACO BLUE
 const COLOR_SCHEME = {
-  idle_stroke: 'rgba(255, 40, 80,',    // Merah terang untuk garis solid
-  idle_glow: 'rgba(220, 0, 30,',       // Merah darah pekat untuk efek glow (kontras absolut)
-  active_stroke: 'rgba(255, 255, 255,',// Putih murni saat ditarik
-  active_glow: 'rgba(255, 80, 80,',    // Cahaya merah muda saat ditarik
-  node: '#ffffff'                      // Titik sudut putih kristal
+  idle_stroke: 'rgba(0, 150, 255,', 
+  idle_glow: 'rgba(0, 100, 255,',   
+  active_stroke: 'rgba(255, 255, 255,', 
+  active_glow: 'rgba(0, 255, 255,', 
+  node: '#ffffff'
 };
 
 export class SpatialObject {
   constructor(id, initialX, initialY, initialZ) {
-    // Identitas & State
-    this.id = id;
-    this.isGrabbed = false; 
-    
-    // Posisi Koordinat
-    this.x = initialX;
-    this.y = initialY;
-    this.z = initialZ;
-    
-    // Momentum Fisika
-    this.vx = 0;
-    this.vy = 0;
-    this.vz = 0;
-    
-    // Skala Luxury (Negative Space)
+    this.id = id; this.isGrabbed = false; 
+    this.x = initialX; this.y = initialY; this.z = initialZ;
+    this.vx = 0; this.vy = 0; this.vz = 0;
     this.scale = 30;
-    
-    // Rotasi Otomatis
-    this.rotationX = Math.random() * Math.PI;
-    this.rotationY = Math.random() * Math.PI;
+    this.rotationX = Math.random() * Math.PI; this.rotationY = Math.random() * Math.PI;
     this.baseRotationSpeed = 0.01; 
     
-    // --- 3. DYNAMIC PHYSICS TUNING (ZERO-G MOMENTUM) ---
-    this.tension = 0.03;       // Kelenturan pegas medium
-    this.dampeningGrab = 0.80; // Rem kuat saat ditarik (biar presisi dan nggak mantul-mantul)
-    this.dampeningFree = 0.98; // Rem super loss saat dilepas (Meluncur bebas tanpa karet gelang)
+    // --- FIX 2: NERF FISIKA ---
+    // Tension diturunin biar gerakannya smooth (enggak teleport)
+    this.tension = 0.015;      
+    this.dampeningGrab = 0.85; // Bikin agak licin dikit pas ditarik
+    this.dampeningFree = 0.98; 
   }
 
   updatePhysics(targetX, targetY, targetZ) {
     if (this.isGrabbed) {
-      // MODE DITARIK: Karet Gelang Aktif + Snappy
-      const forceX = (targetX - this.x) * this.tension;
-      const forceY = (targetY - this.y) * this.tension;
-      const forceZ = (targetZ - this.z) * this.tension;
+      const dx = targetX - this.x;
+      const dy = targetY - this.y;
+      
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      let currentTension = this.tension;
+      
+      // Mjolnir Recall kita bikin x2.5 aja biar terbangnya elegan, bukan ngilang.
+      if (distance > 300) { 
+        currentTension = this.tension * 2.5; 
+      } else if (distance > 150) {
+        currentTension = this.tension * 1.5; 
+      }
+
+      const forceX = dx * currentTension;
+      const forceY = dy * currentTension;
+      const forceZ = (targetZ - this.z) * currentTension;
 
       this.vx = (this.vx + forceX) * this.dampeningGrab;
       this.vy = (this.vy + forceY) * this.dampeningGrab;
       this.vz = (this.vz + forceZ) * this.dampeningGrab;
       
-      // Agresif muter saat dikunci
-      this.rotationX += 0.06;
-      this.rotationY += 0.08;
+      this.rotationX += 0.06; this.rotationY += 0.08;
     } else {
-      // MODE DILEPAS: Momentum glinding luar angkasa
-      this.vx *= this.dampeningFree;
-      this.vy *= this.dampeningFree;
-      this.vz *= this.dampeningFree;
-      
-      // Muter santai dan elegan
-      this.rotationX += this.baseRotationSpeed;
-      this.rotationY += this.baseRotationSpeed + 0.01;
+      this.vx *= this.dampeningFree; this.vy *= this.dampeningFree; this.vz *= this.dampeningFree;
+      this.rotationX += this.baseRotationSpeed; this.rotationY += this.baseRotationSpeed + 0.01;
     }
-
-    this.x += this.vx;
-    this.y += this.vy;
-    this.z += this.vz;
+    this.x += this.vx; this.y += this.vy; this.z += this.vz;
   }
 
   render(ctx, time) {
     ctx.save();
-    
-    // --- 4. RAHASIA SCI-FI UX (ADDITIVE BLENDING) ---
-    // Bikin garis saling menjumlahkan cahaya kalau tumpang tindih
-    ctx.globalCompositeOperation = 'lighter';
-    
+    ctx.globalCompositeOperation = 'lighter'; 
     ctx.translate(this.x, this.y);
     
-    // Aljabar Linear: Matriks Rotasi & Proyeksi Perspektif
     const projectedNodes = icoNodes.map(node => {
       let x = node[0]; let y = node[1]; let z = node[2];
-      
       let cos = Math.cos(this.rotationX); let sin = Math.sin(this.rotationX);
       let y1 = y * cos - z * sin; let z1 = y * sin + z * cos; y = y1; z = z1;
-      
       cos = Math.cos(this.rotationY); sin = Math.sin(this.rotationY);
       let x1 = x * cos + z * sin; let z2 = -x * sin + z * cos; x = x1; z = z2;
-
-      const fov = 350; 
-      const depth = Math.max(1, fov + z);
+      const fov = 350; const depth = Math.max(1, fov + z);
       const projScale = (fov / depth) * this.scale;
       return { x: x * projScale, y: y * projScale, z: z };
     });
 
-    // Gambar Garis (Edges)
     ctx.beginPath();
     for (const edge of icoEdges) {
-      const p1 = projectedNodes[edge[0]]; 
-      const p2 = projectedNodes[edge[1]];
-      ctx.moveTo(p1.x, p1.y); 
-      ctx.lineTo(p2.x, p2.y);
+      const p1 = projectedNodes[edge[0]]; const p2 = projectedNodes[edge[1]];
+      ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y);
     }
     
-    // Dinamika Glow (Lebih intensif saat ditarik)
-    const baseBlur = this.isGrabbed ? 50 : 25;
-    const pulseGlow = baseBlur + Math.sin(time * 4) * (this.isGrabbed ? 15 : 10);
-    
-    // Eksekusi Gaya Cahaya Lasernya
+    const baseBlur = this.isGrabbed ? 30 : 15;
+    const pulseGlow = baseBlur + Math.sin(time * 5) * (this.isGrabbed ? 10 : 5);
     ctx.shadowBlur = pulseGlow;
     ctx.shadowColor = this.isGrabbed ? COLOR_SCHEME.active_glow + ' 1)' : COLOR_SCHEME.idle_glow + ' 1)';
-    ctx.strokeStyle = this.isGrabbed ? COLOR_SCHEME.active_stroke + ' 1)' : COLOR_SCHEME.idle_stroke + ' 0.9)'; 
-    ctx.lineWidth = this.isGrabbed ? 4 : 2.5; 
+    ctx.strokeStyle = this.isGrabbed ? COLOR_SCHEME.active_stroke + ' 1)' : COLOR_SCHEME.idle_stroke + ' 1)'; 
+    ctx.lineWidth = this.isGrabbed ? 4 : 2; 
     ctx.stroke(); 
-    ctx.shadowBlur = 0;
-    
-    // Gambar Titik (Vertices)
+
     for (const p of projectedNodes) {
       ctx.beginPath(); 
-      // Membesar sedikit pas ditarik biar keliatan kokoh
-      ctx.arc(p.x, p.y, this.isGrabbed ? 7 : 5, 0, Math.PI * 2);
-      ctx.fillStyle = COLOR_SCHEME.node; 
+      ctx.arc(p.x, p.y, this.isGrabbed ? 6 : 4, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffffff'; 
       ctx.fill();
     }
-    
     ctx.restore();
   }
 }

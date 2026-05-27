@@ -19,11 +19,11 @@ const activeFingers = [
   { name: "PINKY", tip: 20, tolerance: 25 }    
 ];
 
-// PALET ULTIMATE CRIMSON - TINGGALIN NEON, FOKUS KONTRAS TAJAM
+// UI HAND TRACKING: CYBER-MONACO BLUE PALETTE
 const COLOR_SCHEME = { 
-  idle: 'rgba(220, 20, 60,',     // Crimson Red (Senada sama objek)
-  active: 'rgba(255, 255, 255,', // Pure White Glow
-  hud_text: '#1a1a1a'           // Hitam Titanium Premium buat HUD
+  idle: 'rgba(0, 150, 255,',     // Deep Blue Solid
+  active: 'rgba(0, 255, 255,',   // Cyan Neon 
+  hud_text: '#00FFFF'            // Teks Aktif di HUD jadi Cyan Menyala
 };
 
 export default function App() {
@@ -49,18 +49,15 @@ export default function App() {
     const w = window.innerWidth;
     const h = window.innerHeight;
     
-    // POSISI OBJEK DIDORONG KE BELAKANG (Z = -250) BIAR LEGA
     sceneRef.current = [
-      new SpatialObject("obj-kiri", w * 0.15, h / 2, -250),
-      new SpatialObject("obj-tengah", w * 0.5, h / 2, -250),
-      new SpatialObject("obj-kanan", w * 0.85, h / 2, -250)
+      new SpatialObject("obj-kiri", w * 0.25, h / 2, -250),
+      new SpatialObject("obj-kanan", w * 0.75, h / 2, -250)
     ];
 
     const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
     hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });
 
     hands.onResults((results) => {
-      // Optimasi Resize Kanvas
       if (results.image && isInitialized.current) {
         if(canvasElement.width !== videoElement.videoWidth || canvasElement.height !== videoElement.videoHeight) {
           canvasElement.width = videoElement.videoWidth; canvasElement.height = videoElement.videoHeight;
@@ -72,10 +69,13 @@ export default function App() {
       ctx.clearRect(0, 0, canvasElement.width, canvasElement.height);
 
       if (results.image) {
-        // --- KUNCI: Default Composition (source-over) ---
-        // Ini biar video di-render paling bawah secara solid.
         ctx.globalCompositeOperation = 'source-over'; 
         ctx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+        
+        // --- FIX 1: CINEMATIC SMOKE DARK FILTER ---
+        // Konsisten 100% gelap elegan biar hologram nyala maksimal
+        ctx.fillStyle = 'rgba(3, 11, 20, 0.75)'; 
+        ctx.fillRect(0, 0, canvasElement.width, canvasElement.height);
       }
 
       const time = Date.now() * 0.0015; 
@@ -86,17 +86,15 @@ export default function App() {
       let targetX = centerX; let targetY = centerY;
 
       if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
-        // --- 1. SINKRON HUD STATE (Diam/Scanning) ---
-        // Pake warna HUD_TEXT (Hitam Titanium) biar premium
         if (h1StatusRef.current) { 
           h1StatusRef.current.innerText = "[ SCANNING ]"; 
-          h1StatusRef.current.style.color = COLOR_SCHEME.hud_text; 
+          h1StatusRef.current.style.color = '#4A7A9C'; 
           h1StatusRef.current.style.textShadow = 'none';
           h1CoordRef.current.innerText = "X: 0.00 | Y: 0.00"; 
         }
         if (h2StatusRef.current) { 
           h2StatusRef.current.innerText = "[ SCANNING ]"; 
-          h2StatusRef.current.style.color = COLOR_SCHEME.hud_text; 
+          h2StatusRef.current.style.color = '#4A7A9C'; 
           h2StatusRef.current.style.textShadow = 'none';
           h2CoordRef.current.innerText = "X: 0.00 | Y: 0.00"; 
         }
@@ -109,8 +107,8 @@ export default function App() {
             const thumbTip = landmarks[4];
             
             for (const finger of activeFingers) {
-                const pinchDist = getDistance(thumbTip, landmarks[finger.tip], canvasElement.width, canvasElement.height);
-                if (pinchDist < 40) { 
+                const pinchDistance = getDistance(thumbTip, landmarks[finger.tip], canvasElement.width, canvasElement.height);
+                if (pinchDistance < 40) { 
                     isTelekinesisActive = true; 
                     selectionData = {
                       x: ((thumbTip.x + landmarks[finger.tip].x) / 2) * canvasElement.width,
@@ -156,12 +154,9 @@ export default function App() {
         obj.render(ctx, time);
       }
 
-      // --- 2. RENDER UI TANGAN AI (ANTI-OVEREXPOSURE) ---
+      // --- RENDER UI TANGAN AI ---
       if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
         
-        // --- RAHASIA KONTRAS MUTLAK: 'source-over' ---
-        // Kita balik ke mode normal biar jaring-jaring tangan di-render secara solid.
-        // Nggak ada lagi penjumlahan cahaya, jadi nggak bakal silo atau nabrak background putih.
         ctx.globalCompositeOperation = 'source-over';
 
         for (let index = 0; index < results.multiHandLandmarks.length; index++) {
@@ -171,7 +166,6 @@ export default function App() {
             const palmScale = Math.max(0.4, Math.min(Math.sqrt(dx * dx + dy * dy) / 150, 2.5));
             const palmCenter = { x: (landmarks[0].x + landmarks[5].x + landmarks[17].x) / 3 * canvasElement.width, y: (landmarks[0].y + landmarks[5].y + landmarks[17].y) / 3 * canvasElement.height };
             
-            // Draw Palm Rings (Monochrome)
             ctx.save(); ctx.translate(palmCenter.x, palmCenter.y); ctx.rotate(time); ctx.beginPath(); ctx.arc(0, 0, 70 * palmScale, 0, Math.PI * 1.5);
             ctx.strokeStyle = COLOR_SCHEME.active + ' 0.9)'; ctx.lineWidth = 4 * palmScale; ctx.shadowBlur = 15 * palmScale; ctx.shadowColor = COLOR_SCHEME.active + ' 1)';
             ctx.setLineDash([10 * palmScale, 15 * palmScale]); ctx.stroke();
@@ -183,10 +177,6 @@ export default function App() {
             ctx.beginPath(); ctx.arc(0, 0, 8 * palmScale, 0, Math.PI * 2); ctx.fillStyle = COLOR_SCHEME.idle + ' 1)'; ctx.shadowBlur = 25 * palmScale; ctx.fill();
             ctx.restore(); ctx.setLineDash([]); 
             
-            // --- 3. RENDER JARI-JARI: PAKE WARNA SOLID ---
-            // Kita pake Lighter buat nambahin sedikit aura glow yang melayang di atas, 
-            // tapi garis utamanya tumpah solid pake 'source-over'.
-            
             ctx.beginPath();
             const connections = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]];
             for (const conn of connections) {
@@ -195,21 +185,20 @@ export default function App() {
                 ctx.moveTo(startX, startY); ctx.lineTo(endX, endY);
             }
             
-            // Jari pas diam: Pake Crimson Red solid (antisilau)
             ctx.shadowBlur = 10 * palmScale; ctx.shadowColor = COLOR_SCHEME.idle + ' 1)';
             ctx.strokeStyle = COLOR_SCHEME.idle + ' 0.9)'; ctx.lineWidth = 3 * palmScale;
             ctx.stroke(); ctx.shadowBlur = 0; 
             
             const thumbTip = landmarks[4]; let isAnyFingerPinching = false; 
             
-            // HUD ACTIVE STATE (Index Grab) - SINKRON WARNA
-            // Pas diem warna HUD_TEXT, pas aktif warna Merah Kinesis Absolut (`rgb(255, 0, 0)`) biar kontras nendang
-            let activeStatus = "[ ACTIVE ]"; let statusColor = COLOR_SCHEME.hud_text; 
+            let activeStatus = "[ ACTIVE ]"; let statusColor = '#4A7A9C'; 
             
             for (const finger of activeFingers) {
-                const fingerTip = landmarks[finger.tip]; const pinchDistance = getDistance(thumbTip, fingerTip, canvasElement.width, canvasElement.height);
+                const fingerTip = landmarks[finger.tip]; 
+                const pinchDistance = getDistance(thumbTip, fingerTip, canvasElement.width, canvasElement.height);
+                
                 if (pinchDistance < Math.max(15, finger.tolerance * palmScale)) {
-                    isAnyFingerPinching = true; activeStatus = `[ ${finger.name} GRAB ]`; statusColor = "rgb(255, 0, 0)"; 
+                    isAnyFingerPinching = true; activeStatus = `[ ${finger.name} GRAB ]`; statusColor = COLOR_SCHEME.hud_text; 
                     const midX = ((thumbTip.x + fingerTip.x) / 2) * canvasElement.width; const midY = ((thumbTip.y + fingerTip.y) / 2) * canvasElement.height;
                     
                     ctx.beginPath(); ctx.arc(midX, midY, 25 * palmScale, 0, Math.PI * 2); ctx.shadowBlur = 35 * palmScale; ctx.shadowColor = COLOR_SCHEME.active + ' 1)';
@@ -237,16 +226,16 @@ export default function App() {
                 ctx.beginPath(); ctx.arc(x, y, 5 * palmScale, 0, Math.PI * 2); ctx.fillStyle = '#ffffff'; ctx.fill(); ctx.shadowBlur = 0; 
             }
 
-            // Injeksi warna teks ke komponen HUD (Clean, tanpa shadow text neon)
             if (index === 0 && h1StatusRef.current) { 
               h1StatusRef.current.innerText = activeStatus; 
               h1StatusRef.current.style.color = statusColor; 
-              h1StatusRef.current.style.textShadow = 'none'; 
+              h1StatusRef.current.style.textShadow = statusColor === COLOR_SCHEME.hud_text ? `0 0 10px ${COLOR_SCHEME.hud_text}` : 'none'; 
               h1CoordRef.current.innerText = `X: ${rawX} | Y: ${rawY}`; 
             } 
             else if (index === 1 && h2StatusRef.current) { 
               h2StatusRef.current.innerText = activeStatus; 
               h2StatusRef.current.style.color = statusColor; 
+              h2StatusRef.current.style.textShadow = statusColor === COLOR_SCHEME.hud_text ? `0 0 10px ${COLOR_SCHEME.hud_text}` : 'none';
               h2CoordRef.current.innerText = `X: ${rawX} | Y: ${rawY}`; 
             }
         }
