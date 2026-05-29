@@ -2,7 +2,8 @@
 import React, { useEffect, useRef } from 'react';
 import HUD from './components/HUD';
 import { playHeavyImpact } from './utils/audioEngine';
-import { SpatialObject } from './engine/SpatialObject';
+import HologramCity from './components/HologramCity'; 
+import { kinesisStore } from './engine/KinesisStore'; // <-- IMPORT JEMBATAN DATA KITA
 
 const Hands = window.Hands;
 const Camera = window.Camera;
@@ -21,9 +22,9 @@ const activeFingers = [
 
 // UI HAND TRACKING: CYBER-MONACO BLUE PALETTE
 const COLOR_SCHEME = { 
-  idle: 'rgba(0, 150, 255,',     // Deep Blue Solid
-  active: 'rgba(0, 255, 255,',   // Cyan Neon 
-  hud_text: '#00FFFF'            // Teks Aktif di HUD jadi Cyan Menyala
+  idle: 'rgba(0, 150, 255,',     
+  active: 'rgba(0, 255, 255,',   
+  hud_text: '#00FFFF'            
 };
 
 export default function App() {
@@ -34,9 +35,6 @@ export default function App() {
 
   const isInitialized = useRef(false);
   const handStates = useRef([{ isPinching: false }, { isPinching: false }]);
-  
-  const sceneRef = useRef([]);
-  const grabbedObjIdRef = useRef(null); 
 
   useEffect(() => {
     if (isInitialized.current || !Hands || !Camera) return;
@@ -45,14 +43,6 @@ export default function App() {
     const videoElement = videoRef.current;
     const canvasElement = canvasRef.current;
     const ctx = canvasElement.getContext('2d');
-
-    const w = window.innerWidth;
-    const h = window.innerHeight;
-    
-    sceneRef.current = [
-      new SpatialObject("obj-kiri", w * 0.25, h / 2, -250),
-      new SpatialObject("obj-kanan", w * 0.75, h / 2, -250)
-    ];
 
     const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
     hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });
@@ -72,91 +62,86 @@ export default function App() {
         ctx.globalCompositeOperation = 'source-over'; 
         ctx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
         
-        // --- FIX 1: CINEMATIC SMOKE DARK FILTER ---
-        // Konsisten 100% gelap elegan biar hologram nyala maksimal
+        // --- CINEMATIC SMOKE DARK FILTER ---
         ctx.fillStyle = 'rgba(3, 11, 20, 0.75)'; 
         ctx.fillRect(0, 0, canvasElement.width, canvasElement.height);
       }
 
       const time = Date.now() * 0.0015; 
-      const centerX = canvasElement.width / 2;
-      const centerY = canvasElement.height / 2;
 
-      let isTelekinesisActive = false;
-      let targetX = centerX; let targetY = centerY;
+      // ====================================================================
+      // --- THE GESTURE STATE MACHINE (OTAK KINESIS 3D) ---
+      // ====================================================================
+      const prevState = kinesisStore.state;
 
       if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
+        if (kinesisStore.state !== 'IDLE') kinesisStore.reset();
+        
+        // Reset UI Texts
         if (h1StatusRef.current) { 
-          h1StatusRef.current.innerText = "[ SCANNING ]"; 
-          h1StatusRef.current.style.color = '#4A7A9C'; 
-          h1StatusRef.current.style.textShadow = 'none';
+          h1StatusRef.current.innerText = "[ SCANNING ]"; h1StatusRef.current.style.color = '#4A7A9C'; 
           h1CoordRef.current.innerText = "X: 0.00 | Y: 0.00"; 
         }
         if (h2StatusRef.current) { 
-          h2StatusRef.current.innerText = "[ SCANNING ]"; 
-          h2StatusRef.current.style.color = '#4A7A9C'; 
-          h2StatusRef.current.style.textShadow = 'none';
+          h2StatusRef.current.innerText = "[ SCANNING ]"; h2StatusRef.current.style.color = '#4A7A9C'; 
           h2CoordRef.current.innerText = "X: 0.00 | Y: 0.00"; 
         }
         handStates.current[0].isPinching = false; handStates.current[1].isPinching = false;
       } else {
-        let selectionData = null;
-
-        for (let index = 0; index < results.multiHandLandmarks.length; index++) {
-            const landmarks = results.multiHandLandmarks[index];
-            const thumbTip = landmarks[4];
-            
-            for (const finger of activeFingers) {
-                const pinchDistance = getDistance(thumbTip, landmarks[finger.tip], canvasElement.width, canvasElement.height);
-                if (pinchDistance < 40) { 
-                    isTelekinesisActive = true; 
-                    selectionData = {
-                      x: ((thumbTip.x + landmarks[finger.tip].x) / 2) * canvasElement.width,
-                      y: ((thumbTip.y + landmarks[finger.tip].y) / 2) * canvasElement.height,
-                    };
-                    break;
-                }
-            }
-            if(selectionData) break;
-        }
-
-        if (isTelekinesisActive && selectionData) { 
-            targetX = selectionData.x; 
-            targetY = selectionData.y; 
-        }
-      }
-
-      for (const obj of sceneRef.current) obj.isGrabbed = false;
-
-      if (isTelekinesisActive) {
-        if (grabbedObjIdRef.current === null) {
-          let closestObj = null;
-          let minDistance = Infinity;
-          for (const obj of sceneRef.current) {
-            const dx = obj.x - targetX; const dy = obj.y - targetY;
-            const dist = Math.sqrt(dx * dx + dy * dy);
-            if (dist < minDistance) { minDistance = dist; closestObj = obj; }
-          }
-          if (closestObj) grabbedObjIdRef.current = closestObj.id;
-        }
-      } else {
-        grabbedObjIdRef.current = null;
-      }
-
-      // --- RENDER OBJEK KINESIS ---
-      for (const obj of sceneRef.current) {
-        if (obj.id === grabbedObjIdRef.current) {
-          obj.isGrabbed = true;
-          obj.updatePhysics(targetX, targetY, obj.z); 
-        } else {
-          obj.updatePhysics(obj.x, obj.y, obj.z); 
-        }
-        obj.render(ctx, time);
-      }
-
-      // --- RENDER UI TANGAN AI ---
-      if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
         
+        // Evaluasi Gestur untuk Tangan Pertama (Index 0)
+        const landmarks = results.multiHandLandmarks[0];
+        const thumbTip = landmarks[4];
+        const indexTip = landmarks[8];
+        const pinkyTip = landmarks[20];
+
+        const indexPinchDist = getDistance(thumbTip, indexTip, canvasElement.width, canvasElement.height);
+        const pinkyPinchDist = getDistance(thumbTip, pinkyTip, canvasElement.width, canvasElement.height);
+
+        // LOGIKA 1 TANGAN:
+        if (results.multiHandLandmarks.length === 1) {
+            
+            if (indexPinchDist < 40) { // Pinch Telunjuk = ROTATE
+                if (kinesisStore.state !== 'ROTATE') {
+                    kinesisStore.state = 'ROTATE';
+                    // Set posisi awal cubitan sebagai jangkar
+                    kinesisStore.anchorX = indexTip.x; 
+                    kinesisStore.anchorY = indexTip.y;
+                } else {
+                    // Hitung delta pergerakan dari titik jangkar
+                    kinesisStore.deltaX = indexTip.x - kinesisStore.anchorX;
+                    kinesisStore.deltaY = indexTip.y - kinesisStore.anchorY;
+                }
+            } 
+            else if (pinkyPinchDist < 40) { // Pinch Kelingking = PAN
+                if (kinesisStore.state !== 'PAN') {
+                    kinesisStore.state = 'PAN';
+                    kinesisStore.anchorX = pinkyTip.x;
+                    kinesisStore.anchorY = pinkyTip.y;
+                } else {
+                    kinesisStore.deltaX = pinkyTip.x - kinesisStore.anchorX;
+                    kinesisStore.deltaY = pinkyTip.y - kinesisStore.anchorY;
+                }
+            } 
+            else {
+                // Tangan terbuka / lepas cubitan
+                if (kinesisStore.state !== 'IDLE') kinesisStore.reset();
+            }
+
+        } else if (results.multiHandLandmarks.length === 2) {
+            // TODO: Logika 2 Tangan (Zoom In / Out) bakal kita bangun kalau rotasi udah lulus uji.
+            if (kinesisStore.state !== 'IDLE') kinesisStore.reset();
+        }
+      }
+
+      // Opsional: Cuma nge-print kalau status berubah biar console browser lu nggak ngehang
+      if (prevState !== kinesisStore.state) {
+          console.log(`%c[KINESIS ENGINE] SYSTEM OVERRIDE: ${kinesisStore.state}`, 'color: #00FFFF; font-weight: bold;');
+      }
+      // ====================================================================
+
+      // --- RENDER UI TANGAN AI (Kode Visual KINESIS Lu Tetap Utuh) ---
+      if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
         ctx.globalCompositeOperation = 'source-over';
 
         for (let index = 0; index < results.multiHandLandmarks.length; index++) {
@@ -190,15 +175,15 @@ export default function App() {
             ctx.stroke(); ctx.shadowBlur = 0; 
             
             const thumbTip = landmarks[4]; let isAnyFingerPinching = false; 
-            
-            let activeStatus = "[ ACTIVE ]"; let statusColor = '#4A7A9C'; 
+            let activeStatus = kinesisStore.state === 'IDLE' ? "[ ACTIVE ]" : `[ SYS: ${kinesisStore.state} ]`; 
+            let statusColor = kinesisStore.state === 'IDLE' ? '#4A7A9C' : COLOR_SCHEME.hud_text; 
             
             for (const finger of activeFingers) {
                 const fingerTip = landmarks[finger.tip]; 
                 const pinchDistance = getDistance(thumbTip, fingerTip, canvasElement.width, canvasElement.height);
                 
                 if (pinchDistance < Math.max(15, finger.tolerance * palmScale)) {
-                    isAnyFingerPinching = true; activeStatus = `[ ${finger.name} GRAB ]`; statusColor = COLOR_SCHEME.hud_text; 
+                    isAnyFingerPinching = true; 
                     const midX = ((thumbTip.x + fingerTip.x) / 2) * canvasElement.width; const midY = ((thumbTip.y + fingerTip.y) / 2) * canvasElement.height;
                     
                     ctx.beginPath(); ctx.arc(midX, midY, 25 * palmScale, 0, Math.PI * 2); ctx.shadowBlur = 35 * palmScale; ctx.shadowColor = COLOR_SCHEME.active + ' 1)';
@@ -232,12 +217,6 @@ export default function App() {
               h1StatusRef.current.style.textShadow = statusColor === COLOR_SCHEME.hud_text ? `0 0 10px ${COLOR_SCHEME.hud_text}` : 'none'; 
               h1CoordRef.current.innerText = `X: ${rawX} | Y: ${rawY}`; 
             } 
-            else if (index === 1 && h2StatusRef.current) { 
-              h2StatusRef.current.innerText = activeStatus; 
-              h2StatusRef.current.style.color = statusColor; 
-              h2StatusRef.current.style.textShadow = statusColor === COLOR_SCHEME.hud_text ? `0 0 10px ${COLOR_SCHEME.hud_text}` : 'none';
-              h2CoordRef.current.innerText = `X: ${rawX} | Y: ${rawY}`; 
-            }
         }
       }
       ctx.restore(); 
@@ -259,11 +238,12 @@ export default function App() {
     >
       <video ref={videoRef} className="hidden" autoPlay playsInline></video>
       <canvas ref={canvasRef} className="absolute top-0 left-0 w-full h-full object-cover z-0"></canvas>
+      
+      {/* MESIN TIGA DIMENSI (Belum kita connect, tapi udah siap di z-10) */}
+      <HologramCity />
+
       <HUD title="HAND 01 // MAIN" position="left" statusRef={h1StatusRef} coordRef={h1CoordRef} />
       <HUD title="HAND 02 // SUB" position="right" statusRef={h2StatusRef} coordRef={h2CoordRef} />
-      <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 flex items-center justify-center pointer-events-none opacity-20 z-20">
-        <div className="w-px h-10 bg-white absolute" /><div className="w-10 h-px bg-white absolute" />
-      </div>
     </div>
   );
 }
